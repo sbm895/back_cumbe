@@ -50,4 +50,9 @@ services:
       - mongo_data:/data/db
 
 volumes:
-  mongo_data:
+  notification-service:
+  build: ./services/notification-service
+  volumes:
+    - ./services/notification-service/firebase-credentials.json:/app/firebase-credentials.json
+  environment:
+    - FIREBASE_CREDENTIALS_PATH=/app/firebase-credentials.json
