@@ -12,3 +12,16 @@ class User(Document):
 
     class Settings:
         name = "users"
+
+
+class Event(Document): 
+    name: str
+    description: Optional[str] = None
+    date: str
+    picture: Optional[list[str]] = None      # URL o path de la foto
+    location: Optional[str] = None
+    organizer: User
+    attendees: list[str] = []    # IDs de usuarios asistentes
+
+    class Settings:
+        name = "events"
