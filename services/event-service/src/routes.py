@@ -11,6 +11,31 @@ async def get_event(event_id: str):
         raise HTTPException(status_code=404, detail="Event not found")
     return event
 
+
+@router.put("/{event_id}")
+async def update_event(event_id: str, event_data: Event):
+    event = await Event.get(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    
+    event.name = event_data.name
+    event.description = event_data.description
+    event.date = event_data.date
+    event.picture = event_data.picture
+    event.location = event_data.location
+    await event.save()
+    
+    return event
+
+@router.delete("/{event_id}")
+async def delete_event(event_id: str):
+    event = await Event.get(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    
+    await event.delete()
+    return {"message": "Event deleted successfully"}
+
 @router.post("/", status_code=201)
 async def create_event(event: Event):
     return await event.insert()
@@ -62,3 +87,22 @@ async def leave_event(event_id: str, user_id: str):
         await user.save()
 
     return {"message": "User is no longer attending the event"}
+
+@router.get("/{event_id}/attendees")
+async def get_event_attendees(event_id: str):
+    event = await Event.get(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return event.attendees
+
+@router.get("/popular")
+async def get_popular_events():
+    # This is a simplified version - you might want to implement actual popularity logic
+    events = await Event.find().to_list()
+    return events
+
+@router.get("/category/{category_name}")
+async def get_events_by_category(category_name: str):
+    events = await Event.find({"categories": category_name}).to_list()
+    return events
+    

@@ -22,6 +22,7 @@ class Event(Document):
     location: Optional[str] = None
     organizer: User
     attendees: list[str] = []    # IDs de usuarios asistentes
-
+    categories: list[str] = []   # Categorías del evento
+    
     class Settings:
         name = "events"

@@ -4,7 +4,7 @@ from beanie import init_beanie
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from .config import settings
-from .models import User
+from .models import User, Event
 from .routes import router
 
 
@@ -13,16 +13,16 @@ async def lifespan(app: FastAPI):
     client = AsyncIOMotorClient(settings.mongo_url)
     await init_beanie(
         database=client[settings.mongo_db],
-        document_models=[User],
+        document_models=[User, Event],
     )
     yield
     client.close()
 
 
-app = FastAPI(title="User Service", lifespan=lifespan)
-app.include_router(router, prefix="/users")
+app = FastAPI(title="Event Service", lifespan=lifespan)
+app.include_router(router, prefix="/events")
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "user-service"}
+    return {"status": "ok", "service": "event-service"}
