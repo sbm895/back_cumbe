@@ -12,7 +12,13 @@ async def lifespan(app: FastAPI):
     await app.state.client.aclose()
 
 
-app = FastAPI(title="API Gateway", lifespan=lifespan)
+app = FastAPI(
+    title="API Gateway",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    lifespan=lifespan,
+)
 
 
 @app.get("/health")
@@ -23,12 +29,6 @@ def health():
 @app.api_route("/users/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_users(path: str, request: Request):
     url = f"{settings.user_service_url}/users/{path}"
-    return await _proxy(request, url)
-
-
-@app.api_route("/products/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
-async def proxy_products(path: str, request: Request):
-    url = f"{settings.product_service_url}/products/{path}"
     return await _proxy(request, url)
 
 

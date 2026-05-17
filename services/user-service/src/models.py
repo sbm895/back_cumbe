@@ -6,6 +6,7 @@ from pydantic import EmailStr
 class User(Document):
     name: str
     email: EmailStr
+    hashed_password: Optional[str] = None
     fcm_token: Optional[str] = None  # se actualiza cada login
     profile_picture: Optional[str] = None      # URL o path de la foto
     favorites: list[str] = []                   # IDs de eventos favoritos

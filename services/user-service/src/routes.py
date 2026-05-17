@@ -1,7 +1,69 @@
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, EmailStr
 from .models import User
+from .auth import hash_password, verify_password, create_access_token, verify_token
 
 router = APIRouter()
+
+
+class SignupRequest(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+@router.post("/signup", response_model=TokenResponse, status_code=201)
+async def signup(request: SignupRequest):
+    """Create a new user with email and password, return JWT token."""
+    existing_user = await User.find_one(User.email == request.email)
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    hashed_pwd = hash_password(request.password)
+    user = User(
+        name=request.name,
+        email=request.email,
+        hashed_password=hashed_pwd,
+    )
+    await user.insert()
+    
+    token = create_access_token(str(user.id))
+    return TokenResponse(access_token=token)
+
+
+@router.post("/login", response_model=TokenResponse)
+async def login(request: LoginRequest):
+    """Authenticate user with email and password, return JWT token."""
+    user = await User.find_one(User.email == request.email)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+    if not verify_password(request.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+    token = create_access_token(str(user.id))
+    return TokenResponse(access_token=token)
+
+
+@router.get("/verify-token/{token}")
+async def verify_token_endpoint(token: str):
+    """Verify a JWT token and return the user ID if valid."""
+    user_id = verify_token(token)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    
+    return {"user_id": user_id}
+
 
 
 @router.get("/")

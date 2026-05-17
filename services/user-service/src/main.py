@@ -19,7 +19,13 @@ async def lifespan(app: FastAPI):
     client.close()
 
 
-app = FastAPI(title="User Service", lifespan=lifespan)
+app = FastAPI(
+    title="User Service",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    lifespan=lifespan,
+)
 app.include_router(router, prefix="/users")
 
 
