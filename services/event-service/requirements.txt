@@ -5,3 +5,5 @@ beanie>=1.26,<2.0        # ODM basado en Motor + Pydantic
 pydantic-settings>=2.0  # variables de entorno
 pydantic[email]>=2.0
 python-dotenv>=1.0
+cloudinary
+python-multipart>=0.0.5

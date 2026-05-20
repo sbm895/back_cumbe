@@ -1,9 +1,24 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, EmailStr
+from fastapi import APIRouter, HTTPException, UploadFile, File, Depends, Header
+from pydantic import BaseModel, EmailStr, conint
 from .models import User
 from .auth import hash_password, verify_password, create_access_token, verify_token
+import cloudinary.uploader
 
 router = APIRouter()
+
+
+class UserImageUploadResponse(BaseModel):
+    """Response model for user profile picture upload."""
+    url: str
+    user_id: str
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "url": "https://res.cloudinary.com/your_cloud/image/upload/v1234567890/abcdef.jpg",
+                "user_id": "507f1f77bcf86cd799439011"
+            }
+        }
 
 
 class SignupRequest(BaseModel):
@@ -15,6 +30,12 @@ class SignupRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class CreateReviewRequest(BaseModel):
+    event_id: str
+    review_text: str
+    star: conint(ge=1, le=5)
 
 
 class TokenResponse(BaseModel):
@@ -55,6 +76,14 @@ async def login(request: LoginRequest):
     return TokenResponse(access_token=token)
 
 
+def get_bearer_token(authorization: str | None = Header(None)) -> str | None:
+    if authorization is None:
+        return None
+    if not authorization.startswith("Bearer "):
+        return None
+    return authorization.split("Bearer ", 1)[1].strip()
+
+
 @router.get("/verify-token/{token}")
 async def verify_token_endpoint(token: str):
     """Verify a JWT token and return the user ID if valid."""
@@ -64,6 +93,18 @@ async def verify_token_endpoint(token: str):
     
     return {"user_id": user_id}
 
+
+@router.post("/logout")
+async def logout(authorization: str = Depends(get_bearer_token)):
+    """Log the user out by verifying the bearer token and returning a success message."""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header missing or invalid")
+
+    user_id = verify_token(authorization)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    return {"message": "Logged out successfully"}
 
 
 @router.get("/")
@@ -92,7 +133,7 @@ async def update_user(user_id: str, user_data: User):
     user.name = user_data.name
     user.email = user_data.email
     user.fcm_token = user_data.fcm_token
-    user.profile_picture = user_data.profile_picture
+    user.profile_picture_url = user_data.profile_picture_url
     await user.save()
     
     return user
@@ -115,6 +156,18 @@ async def get_fcm_token(user_id: str):
         raise HTTPException(status_code=404, detail="User not found")
     return {"fcm_token": user.fcm_token}
 
+
+@router.post("/{user_id}/reviews", status_code=201, response_model=CreateReviewRequest)
+async def add_review(user_id: str, review: CreateReviewRequest):
+    user = await User.get(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.reviews.append(review)
+    await user.save()
+    return review
+
+
 @router.delete("/{user_id}")
 async def delete_user(user_id: str):
     user = await User.get(user_id)
@@ -122,5 +175,56 @@ async def delete_user(user_id: str):
         raise HTTPException(status_code=404, detail="User not found")
     
     await user.delete()
-    return {"message": "User deleted successfully"} 
+    return {"message": "User deleted successfully"}
+
+
+@router.post(
+    "/{user_id}/upload-profile-picture",
+    response_model=UserImageUploadResponse,
+    status_code=200,
+    summary="Upload User Profile Picture",
+    tags=["Users", "Images"],
+    responses={
+        404: {
+            "description": "User not found",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "User not found"}
+                }
+            },
+        },
+        500: {
+            "description": "Error uploading image to Cloudinary",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Error uploading image: Cloudinary API error"}
+                }
+            },
+        },
+    },
+)
+async def upload_profile_picture(user_id: str, file: UploadFile = File(...)):
+    """
+    Upload a profile picture for a user to Cloudinary.
+    
+    - **user_id**: The ID of the user to upload the profile picture for
+    - **file**: The image file to upload (multipart/form-data)
+    
+    Returns the Cloudinary secure URL and saves it to the User document in MongoDB.
+    """
+    user = await User.get(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    try:
+        contents = await file.read()
+        result = cloudinary.uploader.upload(contents)
+        secure_url = result["secure_url"]
+        
+        user.profile_picture_url = secure_url
+        await user.save()
+        
+        return {"url": secure_url, "user_id": user_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error uploading image: {str(e)}")
 
