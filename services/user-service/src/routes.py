@@ -229,7 +229,16 @@ async def upload_profile_picture(user_id: str, file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Error uploading image: {str(e)}")
 
 
-@router.post("/{user_id}/favorites/{event_id}")
+@router.post(
+    "/{user_id}/favorites/{event_id}",
+    summary="Add Event to Favorites",
+    description="Añade un evento a la lista de favoritos del usuario.",
+    tags=["Interactions"],
+    responses={
+        200: {"description": "Event added to favorites successfully"},
+        404: {"description": "User not found"}
+    }
+)
 async def add_favorite(user_id: str, event_id: str):
     user = await User.get(user_id)
     if not user:
@@ -239,7 +248,16 @@ async def add_favorite(user_id: str, event_id: str):
         await user.save()
     return {"message": "Event added to favorites"}
 
-@router.delete("/{user_id}/favorites/{event_id}")
+@router.delete(
+    "/{user_id}/favorites/{event_id}",
+    summary="Remove Event from Favorites",
+    description="Elimina un evento de la lista de favoritos del usuario.",
+    tags=["Interactions"],
+    responses={
+        200: {"description": "Event removed from favorites successfully"},
+        404: {"description": "User not found"}
+    }
+)
 async def remove_favorite(user_id: str, event_id: str):
     user = await User.get(user_id)
     if not user:
@@ -249,7 +267,17 @@ async def remove_favorite(user_id: str, event_id: str):
         await user.save()
     return {"message": "Event removed from favorites"}
 
-@router.post("/{user_id}/follow/{target_user_id}")
+@router.post(
+    "/{user_id}/follow/{target_user_id}",
+    summary="Follow a User",
+    description="Permite que un usuario siga a otro. Importante para el sistema de recomendación por adyacencia (filtrado colaborativo).",
+    tags=["Interactions"],
+    responses={
+        200: {"description": "Successfully followed user"},
+        400: {"description": "User cannot follow themselves"},
+        404: {"description": "User or target user not found"}
+    }
+)
 async def follow_user(user_id: str, target_user_id: str):
     if user_id == target_user_id:
         raise HTTPException(status_code=400, detail="User cannot follow themselves")
