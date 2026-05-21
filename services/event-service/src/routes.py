@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException
+from datetime import datetime, timedelta, timezone
 from .models import User, Event
 
 router = APIRouter()
@@ -80,9 +81,17 @@ async def leave_event(event_id: str, user_id: str):
     return {"message": "User is no longer attending the event"}
 
 
-@router.get("/incoming") # Not implemented yet!!! # For testing, we return all events.
+@router.get("/incoming")
 async def get_incoming_events():
-    events = await Event.find().to_list()
+    now = datetime.now(timezone.utc)
+    next_24h = now + timedelta(hours=24)
+
+    now_str = now.isoformat()
+    next_24h_str = next_24h.isoformat()
+    
+    events = await Event.find({
+        "date": {"$gte": now_str, "$lte": next_24h_str}
+    }).to_list()
     return events
 
 
