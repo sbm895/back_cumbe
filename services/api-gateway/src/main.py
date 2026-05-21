@@ -31,6 +31,16 @@ async def proxy_users(path: str, request: Request):
     url = f"{settings.user_service_url}/users/{path}"
     return await _proxy(request, url)
 
+@app.api_route("/events/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def proxy_events(path: str, request: Request):
+    url = f"{settings.event_service_url}/events/{path}"
+    return await _proxy(request, url)
+
+@app.api_route("/notifications/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def proxy_notifications(path: str, request: Request):
+    url = f"{settings.notification_service_url}/notifications/{path}"
+    return await _proxy(request, url)
+
 
 async def _proxy(request: Request, url: str):
     client: httpx.AsyncClient = request.app.state.client

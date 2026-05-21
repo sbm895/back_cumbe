@@ -6,8 +6,11 @@ services:
     depends_on:
       - user-service
       - event-service
+      - notification-service
     environment:
       - USER_SERVICE_URL=http://user-service:4001
+      - EVENT_SERVICE_URL=http://event-service:4003
+      - NOTIFICATION_SERVICE_URL=http://notification-service:4004
     env_file:
       - .env
     volumes:
