@@ -80,6 +80,11 @@ async def leave_event(event_id: str, user_id: str):
     return {"message": "User is no longer attending the event"}
 
 
+@router.get("/incoming") # Not implemented yet!!! # For testing, we return all events.
+async def get_incoming_events():
+    events = await Event.find().to_list()
+    return events
+
 
 @router.get("/popular")
 async def get_popular_events():
