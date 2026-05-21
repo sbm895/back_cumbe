@@ -3,8 +3,6 @@ from pydantic import BaseModel, EmailStr, conint
 from .models import User
 from .auth import hash_password, verify_password, create_access_token, verify_token
 import cloudinary.uploader
-import httpx
-import os
 
 router = APIRouter()
 
@@ -167,22 +165,6 @@ async def add_review(user_id: str, review: CreateReviewRequest):
 
     user.reviews.append(review)
     await user.save()
-    
-    # Sincronizar automáticamente con event-service
-    event_service_url = os.getenv("EVENT_SERVICE_URL", "http://event-service:4003")
-    async with httpx.AsyncClient() as client:
-        try:
-            await client.post(
-                f"{event_service_url}/{review.event_id}/reviews",
-                json={
-                    "user_id": user_id,
-                    "review_text": review.review_text,
-                    "star": review.star
-                },
-                timeout=5.0
-            )
-        except Exception:
-            pass # Si el servicio de eventos falla, igual ya guardamos en el usuario
 
     return review
 
