@@ -1,9 +1,16 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from .models import User, Event
+from .categories import CategoriaBQ
 import cloudinary.uploader
 
 router = APIRouter()
+
+
+@router.get("/categories", response_model=list[str])
+async def get_categories():
+    """Retorna todas las categorías culturales disponibles para eventos en Barranquilla."""
+    return [c.value for c in CategoriaBQ]
 
 
 class EventImageUploadResponse(BaseModel):
@@ -127,13 +134,7 @@ async def get_event_attendees(event_id: str):
         raise HTTPException(status_code=404, detail="Event not found")
     return event.attendees
 
-@router.get("/popular")
-async def get_popular_events(limit: int = 10):
-    try:
-        events = await Event.find().limit(limit).to_list()
-        return events
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching popular events: {str(e)}")
+
 
 
 @router.post(

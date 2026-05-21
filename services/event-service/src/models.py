@@ -1,6 +1,7 @@
 from typing import Optional
 from beanie import Document
 from pydantic import BaseModel, EmailStr
+from .categories import CategoriaBQ
 
 
 class EventReview(BaseModel):
@@ -29,7 +30,7 @@ class Event(Document):
     price: Optional[float] = None
     organizer: User
     attendees: list[str] = []    # IDs de usuarios asistentes
-    categories: list[str] = []   # Categorías del evento
+    categories: list[CategoriaBQ] = []   # Categorías culturales del evento (ver CategoriaBQ)
 
     class Settings:
         name = "events"

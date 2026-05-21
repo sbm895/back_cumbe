@@ -1,6 +1,7 @@
 from beanie import Document
 from pydantic import EmailStr
 from typing import Optional
+from .categories import CategoriaBQ
 
 
 class User(Document):
@@ -22,9 +23,9 @@ class Event(Document):
     pictures: list[str] = []
     location: Optional[str] = None
     price: Optional[float] = None
-    organizer: str
+    organizer: User
     attendees: list[str] = []
-    categories: list[str] = []
+    categories: list[CategoriaBQ] = []
 
     class Settings:
         name = "events"
