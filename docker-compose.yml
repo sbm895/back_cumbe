@@ -7,10 +7,12 @@ services:
       - user-service
       - event-service
       - notification-service
+      - payment-service
     environment:
       - USER_SERVICE_URL=http://user-service:4001
       - EVENT_SERVICE_URL=http://event-service:4003
       - NOTIFICATION_SERVICE_URL=http://notification-service:4004
+      - PAYMENT_SERVICE_URL=http://payment-service:4005
     env_file:
       - .env
     volumes:
@@ -66,6 +68,31 @@ services:
     volumes:
       - ./services/notification-service:/app
     command: uvicorn src.main:app --host 0.0.0.0 --port 4004 --reload
+
+  payment-service:
+    build: ./services/payment-service
+    ports:
+      - "4005:4005"
+    depends_on:
+      - mongo
+      - user-service
+      - event-service
+    environment:
+      - MONGO_URL=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongo:27017
+      - MONGO_DB=users_db
+      - USER_SERVICE_URL=http://user-service:4001
+      - EVENT_SERVICE_URL=http://event-service:4003
+      - EPAYCO_P_CUST_ID=${EPAYCO_P_CUST_ID}
+      - EPAYCO_P_KEY=${EPAYCO_P_KEY}
+      - EPAYCO_PUBLIC_KEY=${EPAYCO_PUBLIC_KEY}
+      - EPAYCO_TEST=${EPAYCO_TEST}
+      - PAYMENT_CALLBACK_URL=${PAYMENT_CALLBACK_URL}
+      - PAYMENT_RESPONSE_URL=${PAYMENT_RESPONSE_URL}
+    env_file:
+      - .env
+    volumes:
+      - ./services/payment-service:/app
+    command: uvicorn src.main:app --host 0.0.0.0 --port 4005 --reload
 
   mongo:
     image: mongo:7
