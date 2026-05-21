@@ -3,15 +3,6 @@ from .models import User, Event
 
 router = APIRouter()
 
-
-@router.get("/{event_id}")
-async def get_event(event_id: str):
-    event = await Event.get(event_id)
-    if not event:
-        raise HTTPException(status_code=404, detail="Event not found")
-    return event
-
-
 @router.put("/{event_id}")
 async def update_event(event_id: str, event_data: Event):
     event = await Event.get(event_id)
@@ -88,12 +79,7 @@ async def leave_event(event_id: str, user_id: str):
 
     return {"message": "User is no longer attending the event"}
 
-@router.get("/{event_id}/attendees")
-async def get_event_attendees(event_id: str):
-    event = await Event.get(event_id)
-    if not event:
-        raise HTTPException(status_code=404, detail="Event not found")
-    return event.attendees
+
 
 @router.get("/popular")
 async def get_popular_events():
@@ -105,4 +91,17 @@ async def get_popular_events():
 async def get_events_by_category(category_name: str):
     events = await Event.find({"categories": category_name}).to_list()
     return events
-    
+
+@router.get("/{event_id}")
+async def get_event(event_id: str):
+    event = await Event.get(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return event
+
+@router.get("/{event_id}/attendees")
+async def get_event_attendees(event_id: str):
+    event = await Event.get(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return event.attendees
