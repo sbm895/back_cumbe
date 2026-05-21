@@ -92,6 +92,16 @@ async def delete_event(event_id: str):
 
 @router.post("/", status_code=201)
 async def create_event(event: Event):
+    if event.organizer and str(event.organizer.id) not in event.attendees:
+        event.attendees.append(str(event.organizer.id))
+    
+    # Añadir a la lista de eventos asistidos del organizador
+    if event.organizer and hasattr(event.organizer, 'attended_events'):
+        # Solo actualizamos el documento del usuario en la BD de users si usáramos una arquitectura monolítica.
+        # Al ser microservicios, Event.organizer es un sub-documento. Modificamos el sub-documento de paso.
+        if str(event.id) not in event.organizer.attended_events:
+            event.organizer.attended_events.append(str(event.id))
+            
     return await event.insert()
 
 @router.post("/{user_id}/events")
@@ -100,7 +110,17 @@ async def create_event_for_user(user_id: str, event: Event):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     event.organizer = user
-    return await event.insert()
+    if user_id not in event.attendees:
+        event.attendees.append(user_id)
+    
+    # Añadir el evento a los asistidos del usuario organizador
+    # Como el evento no tiene ID hasta hacer el insert, guardamos primero.
+    inserted_event = await event.insert()
+    if str(inserted_event.id) not in user.attended_events:
+        user.attended_events.append(str(inserted_event.id))
+        await user.save()
+        
+    return inserted_event
 
 @router.post("/{event_id}/attend")
 async def attend_event(event_id: str, user_id: str):

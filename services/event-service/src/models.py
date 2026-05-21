@@ -1,7 +1,8 @@
 from typing import Optional
 from beanie import Document
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from .categories import CategoriaBQ
+from datetime import datetime
 
 
 class EventReview(BaseModel):
@@ -16,6 +17,7 @@ class User(Document):
     favorites: list[str] = []                   # IDs de eventos favoritos
     attended_events: list[str] = []             # IDs de eventos asistidos
     reviews: list[EventReview] = []               # IDs de eventos revisados
+    following: list[str] = []                   # IDs de usuarios que sigue
 
     class Settings:
         name = "users"
@@ -24,13 +26,23 @@ class User(Document):
 class Event(Document): 
     name: str
     description: Optional[str] = None
-    date: str
+    date: datetime
     pictures: list[str] = []      # Cloudinary image URLs
     location: Optional[str] = None
     price: Optional[float] = None
     organizer: User
     attendees: list[str] = []    # IDs de usuarios asistentes
     categories: list[CategoriaBQ] = []   # Categorías culturales del evento (ver CategoriaBQ)
+
+    @field_validator("date", mode="before")
+    @classmethod
+    def parse_date(cls, v):
+        if isinstance(v, str):
+            try:
+                return datetime.strptime(v, "%d/%m/%Y %H:%M")
+            except ValueError:
+                raise ValueError("Formato de fecha inválido. Usa dd/mm/yyyy hh:mm")
+        return v
 
     class Settings:
         name = "events"

@@ -18,6 +18,7 @@ class User(Document):
     favorites: list[str] = []                   # IDs de eventos favoritos
     attended_events: list[str] = []             # IDs de eventos asistidos
     reviews: list[EventReview] = []               # IDs de eventos revisados
+    following: list[str] = []                   # IDs de usuarios que sigue
 
 
 

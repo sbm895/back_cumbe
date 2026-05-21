@@ -228,3 +228,42 @@ async def upload_profile_picture(user_id: str, file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error uploading image: {str(e)}")
 
+
+@router.post("/{user_id}/favorites/{event_id}")
+async def add_favorite(user_id: str, event_id: str):
+    user = await User.get(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if event_id not in user.favorites:
+        user.favorites.append(event_id)
+        await user.save()
+    return {"message": "Event added to favorites"}
+
+@router.delete("/{user_id}/favorites/{event_id}")
+async def remove_favorite(user_id: str, event_id: str):
+    user = await User.get(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if event_id in user.favorites:
+        user.favorites.remove(event_id)
+        await user.save()
+    return {"message": "Event removed from favorites"}
+
+@router.post("/{user_id}/follow/{target_user_id}")
+async def follow_user(user_id: str, target_user_id: str):
+    if user_id == target_user_id:
+        raise HTTPException(status_code=400, detail="User cannot follow themselves")
+    
+    user = await User.get(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    target = await User.get(target_user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Target user not found")
+        
+    if target_user_id not in user.following:
+        user.following.append(target_user_id)
+        await user.save()
+        
+    return {"message": f"Successfully followed user {target_user_id}"}
