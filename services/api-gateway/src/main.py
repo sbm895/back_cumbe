@@ -41,6 +41,11 @@ async def proxy_notifications(path: str, request: Request):
     url = f"{settings.notification_service_url}/notifications/{path}"
     return await _proxy(request, url)
 
+@app.api_route("/payments/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def proxy_payments(path: str, request: Request):
+    url = f"{settings.payment_service_url}/payments/{path}"
+    return await _proxy(request, url)
+
 
 async def _proxy(request: Request, url: str):
     client: httpx.AsyncClient = request.app.state.client
