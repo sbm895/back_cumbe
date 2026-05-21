@@ -7,10 +7,14 @@ import cloudinary.uploader
 router = APIRouter()
 
 
-@router.get("/categories", response_model=list[str])
+@router.get("/categories", response_model=dict[str, list[str]])
 async def get_categories():
-    """Retorna todas las categorías culturales disponibles para eventos en Barranquilla."""
-    return [c.value for c in CategoriaBQ]
+    """Retorna todas las categorías culturales agrupadas por su categoría padre."""
+    from .categories import PADRE_A_SUBCATEGORIAS
+    return {
+        padre.value: [sub.value for sub in subs] 
+        for padre, subs in PADRE_A_SUBCATEGORIAS.items()
+    }
 
 
 class EventImageUploadResponse(BaseModel):
@@ -38,8 +42,19 @@ async def get_popular_events():
 
 @router.get("/category/{category_name}")
 async def get_events_by_category(category_name: str):
-    events = await Event.find({"categories": category_name}).to_list()
-    return events
+    """Busca eventos. category_name puede ser una categoría padre (ej. 'música') o una subcategoría (ej. 'champeta')."""
+    from .categories import CategoriaPadre, PADRE_A_SUBCATEGORIAS
+    
+    try:
+        # Si es una categoría padre, buscamos todas las subcategorías que le pertenecen
+        padre = CategoriaPadre(category_name)
+        subs = PADRE_A_SUBCATEGORIAS[padre]
+        events = await Event.find({"categories": {"$in": subs}}).to_list()
+        return events
+    except ValueError:
+        # Si falla, asumimos que es una subcategoría directa (ej. 'champeta')
+        events = await Event.find({"categories": category_name}).to_list()
+        return events
 
 
 @router.get("/{event_id}")
