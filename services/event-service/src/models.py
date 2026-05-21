@@ -24,6 +24,7 @@ class Event(Document):
     organizer: User
     attendees: list[str] = []    # IDs de usuarios asistentes
     categories: list[str] = []   # Categorías del evento
+    price: float = 0.0
 
     class Settings:
         name = "events"
