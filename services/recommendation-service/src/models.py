@@ -25,7 +25,7 @@ class Event(Document):
     pictures: list[str] = []
     location: Optional[str] = None
     price: Optional[float] = None
-    organizer: User
+    organizer: str
     attendees: list[str] = []
     categories: list[CategoriaBQ] = []
 

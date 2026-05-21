@@ -3,6 +3,8 @@ from pydantic import BaseModel, EmailStr, conint
 from .models import User
 from .auth import hash_password, verify_password, create_access_token, verify_token
 import cloudinary.uploader
+import httpx
+import os
 
 router = APIRouter()
 
@@ -165,6 +167,23 @@ async def add_review(user_id: str, review: CreateReviewRequest):
 
     user.reviews.append(review)
     await user.save()
+    
+    # Sincronizar automáticamente con event-service
+    event_service_url = os.getenv("EVENT_SERVICE_URL", "http://event-service:4003")
+    async with httpx.AsyncClient() as client:
+        try:
+            await client.post(
+                f"{event_service_url}/{review.event_id}/reviews",
+                json={
+                    "user_id": user_id,
+                    "review_text": review.review_text,
+                    "star": review.star
+                },
+                timeout=5.0
+            )
+        except Exception:
+            pass # Si el servicio de eventos falla, igual ya guardamos en el usuario
+
     return review
 
 
@@ -295,3 +314,30 @@ async def follow_user(user_id: str, target_user_id: str):
         await user.save()
         
     return {"message": f"Successfully followed user {target_user_id}"}
+
+
+@router.delete(
+    "/{user_id}/follow/{target_user_id}",
+    summary="Unfollow a User",
+    description="Permite que un usuario deje de seguir a otro.",
+    tags=["Interactions"],
+    responses={
+        200: {"description": "Successfully unfollowed user"},
+        404: {"description": "User or target user not found"}
+    }
+)
+async def unfollow_user(user_id: str, target_user_id: str):
+    user = await User.get(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    target = await User.get(target_user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Target user not found")
+        
+    if target_user_id in user.following:
+        user.following.remove(target_user_id)
+        await user.save()
+        
+    return {"message": f"Successfully unfollowed user {target_user_id}"}
+

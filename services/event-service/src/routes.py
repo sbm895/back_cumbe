@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
-from .models import User, Event
+from .models import User, Event, UserReview
 from .categories import CategoriaBQ
 import cloudinary.uploader
 
@@ -92,34 +92,42 @@ async def delete_event(event_id: str):
 
 @router.post("/", status_code=201)
 async def create_event(event: Event):
-    if event.organizer and str(event.organizer.id) not in event.attendees:
-        event.attendees.append(str(event.organizer.id))
-    
-    # Añadir a la lista de eventos asistidos del organizador
-    if event.organizer and hasattr(event.organizer, 'attended_events'):
-        # Solo actualizamos el documento del usuario en la BD de users si usáramos una arquitectura monolítica.
-        # Al ser microservicios, Event.organizer es un sub-documento. Modificamos el sub-documento de paso.
-        if str(event.id) not in event.organizer.attended_events:
-            event.organizer.attended_events.append(str(event.id))
-            
-    return await event.insert()
+    # `event.organizer` ahora guarda solo el id (str)
+    if event.organizer and event.organizer not in event.attendees:
+        event.attendees.append(event.organizer)
+
+    # Insertar el evento primero para obtener su id
+    inserted_event = await event.insert()
+
+    # Intentar actualizar la lista de `attended_events` del usuario organizador
+    try:
+        if inserted_event.organizer:
+            user = await User.get(inserted_event.organizer)
+            if user and str(inserted_event.id) not in user.attended_events:
+                user.attended_events.append(str(inserted_event.id))
+                await user.save()
+    except Exception:
+        # No bloquear la creación del evento si falla la actualización del usuario
+        pass
+
+    return inserted_event
 
 @router.post("/{user_id}/events")
 async def create_event_for_user(user_id: str, event: Event):
     user = await User.get(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    event.organizer = user
+    # Guardamos solo el id del organizador
+    event.organizer = user_id
     if user_id not in event.attendees:
         event.attendees.append(user_id)
-    
-    # Añadir el evento a los asistidos del usuario organizador
-    # Como el evento no tiene ID hasta hacer el insert, guardamos primero.
+
+    # Insertar y luego actualizar el documento del usuario
     inserted_event = await event.insert()
     if str(inserted_event.id) not in user.attended_events:
         user.attended_events.append(str(inserted_event.id))
         await user.save()
-        
+
     return inserted_event
 
 @router.post("/{event_id}/attend")
@@ -168,6 +176,27 @@ async def get_event_attendees(event_id: str):
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     return event.attendees
+
+
+@router.post("/{event_id}/reviews", status_code=201)
+async def add_review_to_event(event_id: str, review: UserReview):
+    """Recibe una reseña de un usuario y la guarda en el modelo del evento."""
+    event = await Event.get(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    
+    event.reviews.append(review)
+    await event.save()
+    return review
+
+@router.get("/{event_id}/reviews")
+async def get_event_reviews(event_id: str):
+    """Retorna la lista de todas las reseñas que los usuarios han dejado para este evento."""
+    event = await Event.get(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    
+    return event.reviews
 
 
 

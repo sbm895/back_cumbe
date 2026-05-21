@@ -45,7 +45,8 @@ async def create_event_for_user(user_id: str, event: Event):
     user = await User.get(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    event.organizer = user
+    # Guardamos solo el id del organizador
+    event.organizer = user_id
     return await event.insert()
 
 @router.post("/{event_id}/attend")

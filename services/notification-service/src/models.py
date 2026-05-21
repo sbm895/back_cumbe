@@ -23,7 +23,7 @@ class Event(Document):
     date: datetime
     picture: Optional[list[str]] = None      # URL o path de la foto
     location: Optional[str] = None
-    organizer: User
+    organizer: str
     attendees: list[str] = []    # IDs de usuarios asistentes
     categories: list[str] = []   # Categorías del evento
     
