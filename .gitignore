@@ -3,5 +3,5 @@ __pycache__/
 *.pyc
 .venv/
 .agents/
-.docs/
-.request.http
+docs/
+request.http
