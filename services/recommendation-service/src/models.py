@@ -29,15 +29,6 @@ class Event(Document):
     attendees: list[str] = []
     categories: list[CategoriaBQ] = []
 
-    @field_validator("date", mode="before")
-    @classmethod
-    def parse_date(cls, v):
-        if isinstance(v, str):
-            try:
-                return datetime.strptime(v, "%d/%m/%Y %H:%M")
-            except ValueError:
-                raise ValueError("Formato de fecha inválido. Usa dd/mm/yyyy hh:mm")
-        return v
-
+ 
     class Settings:
         name = "events"

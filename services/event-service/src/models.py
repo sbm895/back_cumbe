@@ -41,16 +41,7 @@ class Event(Document):
     categories: list[CategoriaBQ] = []   # Categorías culturales del evento (ver CategoriaBQ)
     reviews: list[UserReview] = []       # Reseñas del evento hechas por usuarios
 
-    @field_validator("date", mode="before")
-    @classmethod
-    def parse_date(cls, v):
-        if isinstance(v, str):
-            try:
-                return datetime.strptime(v, "%d/%m/%Y %H:%M")
-            except ValueError:
-                raise ValueError("Formato de fecha inválido. Usa dd/mm/yyyy hh:mm")
-        return v
-
+    
     @field_validator("categories", mode="before")
     @classmethod
     def normalize_categories(cls, v):
