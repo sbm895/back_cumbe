@@ -170,12 +170,20 @@ async def leave_event(event_id: str, user_id: str):
 
     return {"message": "User is no longer attending the event"}
 
-@router.get("/{event_id}/attendees")
-async def get_event_attendees(event_id: str):
-    event = await Event.get(event_id)
-    if not event:
-        raise HTTPException(status_code=404, detail="Event not found")
-    return event.attendees
+
+@router.get("/incoming")
+async def get_incoming_events():
+    now = datetime.now(timezone.utc)
+    next_24h = now + timedelta(hours=24)
+
+    now_str = now.isoformat()
+    next_24h_str = next_24h.isoformat()
+    
+    events = await Event.find({
+        "date": {"$gte": now_str, "$lte": next_24h_str}
+    }).to_list()
+    return events
+
 
 
 @router.post("/{event_id}/reviews", status_code=201)
