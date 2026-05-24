@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
+from datetime import datetime, timezone, timedelta
 from .models import User, Event, UserReview
 from .categories import CategoriaBQ
 import cloudinary.uploader
@@ -38,6 +39,17 @@ async def get_popular_events():
         return events
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching popular events: {str(e)}")
+    
+@router.get("/incoming")
+async def get_incoming_events():
+    now = datetime.now(timezone.utc)
+    next_24h = now + timedelta(hours=24)
+    
+    events = await Event.find({
+        "date": {"$gte": now, "$lte": next_24h}
+    }).to_list()
+    return events
+
 
 
 @router.get("/category/{category_name}")
@@ -176,6 +188,9 @@ async def get_event_attendees(event_id: str):
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     return event.attendees
+
+
+
 
 
 @router.post("/{event_id}/reviews", status_code=201)

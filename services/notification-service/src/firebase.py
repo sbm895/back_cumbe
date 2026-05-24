@@ -20,9 +20,8 @@ def _get_firebase_app():
 async def send_push(token: str, title: str, body: str, data: dict = {}):
     app = _get_firebase_app()
     if app is None:
-        raise RuntimeError(
-            "Firebase credentials are not configured or the credentials file was not found."
-        )
+        print(f"[MOCK PUSH] Sent to Token: '{token}' | Title: '{title}' | Body: '{body}' | Data: {data}")
+        return
 
     message = messaging.Message(
         notification=messaging.Notification(
@@ -33,3 +32,26 @@ async def send_push(token: str, title: str, body: str, data: dict = {}):
         token=token,
     )
     messaging.send(message)
+
+
+async def send_multicast_push(tokens: list[str], title: str, body: str, data: dict = {}):
+    app = _get_firebase_app()
+    if app is None:
+        print(f"[MOCK MULTICAST PUSH] Sent to {len(tokens)} tokens: {tokens} | Title: '{title}' | Body: '{body}' | Data: {data}")
+        return None
+
+    responses = []
+    # Firebase limits multicast messages to 500 tokens per call
+    for i in range(0, len(tokens), 500):
+        chunk = tokens[i:i + 500]
+        message = messaging.MulticastMessage(
+            notification=messaging.Notification(
+                title=title,
+                body=body,
+            ),
+            data=data,
+            tokens=chunk,
+        )
+        batch_response = messaging.send_each_for_multicast(message)
+        responses.append(batch_response)
+    return responses

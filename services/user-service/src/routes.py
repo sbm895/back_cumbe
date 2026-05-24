@@ -42,6 +42,16 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
 
+class BatchUserRequest(BaseModel):
+    ids: list[str]
+
+@router.post("/batch", response_model=list[User])
+async def get_users_batch(request: BatchUserRequest):
+    from beanie import PydanticObjectId
+    object_ids = [PydanticObjectId(uid) for uid in request.ids if PydanticObjectId.is_valid(uid)]
+    users = await User.find({"_id": {"$in": object_ids}}).to_list()
+    return users
+
 
 @router.post("/signup", response_model=TokenResponse, status_code=201)
 async def signup(request: SignupRequest):
