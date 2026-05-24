@@ -2,6 +2,8 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Depends, Header
 from pydantic import BaseModel, EmailStr, conint
 from .models import User, EventReview
 from .auth import hash_password, verify_password, create_access_token, verify_token
+from .config import settings
+import httpx
 import cloudinary.uploader
 
 router = APIRouter()
@@ -166,19 +168,27 @@ async def get_fcm_token(user_id: str):
         raise HTTPException(status_code=404, detail="User not found")
     return {"fcm_token": user.fcm_token}
 
-
-@router.post("/{user_id}/reviews", status_code=201, response_model=CreateReviewRequest)
-async def add_review(user_id: str, review: CreateReviewRequest):
+@router.post("/{user_id}/reviews", status_code=201, response_model=EventReview)
+async def add_review(user_id: str, review: EventReview):
     user = await User.get(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    async with httpx.AsyncClient() as client:
+        event_resp = await client.post(
+            f"{settings.eventos_url}/events/{review.event_id}/reviews",
+            json={"user_id": user_id, "review_text": review.review_text, "star": review.star},
+            timeout=10.0,
+        )
+        if event_resp.status_code not in (200, 201):
+            raise HTTPException(status_code=404, detail="Event not found")
+
     user.reviews.append(review)
     await user.save()
-
     return review
 
-@router.put("/{user_id}/reviews/{event_id}", status_code=200, response_model=EventReview)
+
+@router.patch("/{user_id}/reviews/{event_id}", status_code=200, response_model=EventReview)
 async def update_review(user_id: str, event_id: str, review: EventReview):
     user = await User.get(user_id)
     if not user:
@@ -188,9 +198,18 @@ async def update_review(user_id: str, event_id: str, review: EventReview):
         if r.event_id == event_id:
             user.reviews[i] = review
             await user.save()
-            return review
+            break
+    else:
+        raise HTTPException(status_code=404, detail="Review not found")
 
-    raise HTTPException(status_code=404, detail="Review not found")
+    async with httpx.AsyncClient() as client:
+        await client.patch(
+            f"{settings.eventos_url}/events/{review.event_id}/reviews",
+            json={"user_id": user_id, "review_text": review.review_text, "star": review.star},
+            timeout=10.0,
+        )
+
+    return review
 
 
 @router.delete("/{user_id}/reviews/{event_id}", status_code=204)
@@ -207,6 +226,11 @@ async def delete_review(user_id: str, event_id: str):
 
     await user.save()
 
+    async with httpx.AsyncClient() as client:
+        await client.delete(
+            f"{settings.eventos_url}/events/{event_id}/reviews/{user_id}",
+            timeout=10.0,
+        )
 
 
 @router.delete("/{user_id}")
