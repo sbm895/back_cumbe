@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException
 from collections import defaultdict
 from beanie import PydanticObjectId
+from .config import settings
 import httpx
-import os
 import math
 
 from .models import User, Event
@@ -15,8 +15,6 @@ from .categories import (
 )
 
 router = APIRouter(tags=["Recommendations"])
-
-EVENT_SERVICE_URL = os.getenv("EVENT_SERVICE_URL", "https://back-cumbe-events.achesito.xyz")
 
 
 async def _popular_events(limit: int = 10):

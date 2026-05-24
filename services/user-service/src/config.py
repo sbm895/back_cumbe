@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     cloudinary_cloud_name: str
     cloudinary_api_key: str
     cloudinary_api_secret: str
-    eventos_url: str = "http://event-service:4003"
+    eventos_url: str = "https://back-cumbe-events.onrender.com"
 
     class Config:
         env_file = ".env"

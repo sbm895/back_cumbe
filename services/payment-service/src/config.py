@@ -7,9 +7,9 @@ class Settings(BaseSettings):
     mongo_db: str  = "users_db"
 
     # URLs internas de servicios (para enriquecer datos del pago)
-    user_service_url: str  = "http://user-service:4001"
-    event_service_url: str = "http://event-service:4003"
-    notification_service_url: str = "http://notification-service:4004"
+    user_service_url: str  = "https://back-cumbe-users.onrender.com"
+    event_service_url: str = "https://back-cumbe-events.onrender.com"
+    notification_service_url: str = "https://back-cumbe-notifs.onrender.com"
 
     # JWT para tokens de confirmación de pago
     jwt_secret_key: str = "your-secret-key-change-in-env"
