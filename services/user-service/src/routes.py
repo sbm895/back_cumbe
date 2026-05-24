@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Depends, Header
 from pydantic import BaseModel, EmailStr, conint
-from .models import User
+from .models import User, EventReview
 from .auth import hash_password, verify_password, create_access_token, verify_token
 import cloudinary.uploader
 
@@ -177,6 +177,36 @@ async def add_review(user_id: str, review: CreateReviewRequest):
     await user.save()
 
     return review
+
+@router.put("/{user_id}/reviews/{event_id}", status_code=200, response_model=EventReview)
+async def update_review(user_id: str, event_id: str, review: EventReview):
+    user = await User.get(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    for i, r in enumerate(user.reviews):
+        if r.event_id == event_id:
+            user.reviews[i] = review
+            await user.save()
+            return review
+
+    raise HTTPException(status_code=404, detail="Review not found")
+
+
+@router.delete("/{user_id}/reviews/{event_id}", status_code=204)
+async def delete_review(user_id: str, event_id: str):
+    user = await User.get(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    original_len = len(user.reviews)
+    user.reviews = [r for r in user.reviews if r.event_id != event_id]
+
+    if len(user.reviews) == original_len:
+        raise HTTPException(status_code=404, detail="Review not found")
+
+    await user.save()
+
 
 
 @router.delete("/{user_id}")
