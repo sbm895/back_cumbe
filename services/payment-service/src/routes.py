@@ -1,44 +1,44 @@
-import uuid
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 import httpx
 
 from .models import Payment, PaymentStatus
-from .schemas import InitiatePaymentRequest, PaymentResponse, PSECallbackPayload
-from .epayco_client import create_pse_transaction, get_transaction_status
+from .schemas import (
+    InitiatePaymentRequest,
+    PaymentResponse,
+    PaymentWithQRResponse,
+    ValidateQRRequest,
+    ValidateQRResponse,
+)
+from .utils import generar_token_pago, generar_qr_base64, validar_token_pago
 from .config import settings
 
-router = APIRouter()
+router = APIRouter(tags=["Payments"])
 
 
-# ── Bancos disponibles ──────────────────────────────────────────────────────
+# ── Iniciar pago y generar QR ──────────────────────────────────────────────
 
-@router.get("/banks", summary="Listar bancos PSE disponibles")
-async def list_banks():
-    """Retorna los bancos habilitados para pago PSE."""
-    # Lista estática representativa; en producción se consulta a ePayco
-    return [
-        {"bankCode": "1007", "bankName": "Bancolombia"},
-        {"bankCode": "1032", "bankName": "Banco Caja Social"},
-        {"bankCode": "1040", "bankName": "Banco Agrario"},
-        {"bankCode": "1052", "bankName": "Banco AV Villas"},
-        {"bankCode": "1013", "bankName": "BBVA Colombia"},
-        {"bankCode": "1023", "bankName": "Banco de Occidente"},
-        {"bankCode": "1006", "bankName": "Banco Itaú"},
-        {"bankCode": "1062", "bankName": "Banco Falabella"},
-    ]
-
-
-# ── Iniciar pago ────────────────────────────────────────────────────────────
-
-@router.post("/initiate", response_model=PaymentResponse, status_code=201,
-             summary="Iniciar transacción PSE")
-async def initiate_payment(body: InitiatePaymentRequest):
+@router.post(
+    "/initiate",
+    response_model=PaymentWithQRResponse,
+    status_code=201,
+    summary="Iniciar pago manual y generar QR",
+    description="Crea un nuevo registro de pago, genera un JWT token y QR code, y envía una notificación al usuario con el código QR embebido en email.",
+    responses={
+        201: {"description": "Pago iniciado exitosamente con QR generado"},
+        404: {"description": "Usuario o evento no encontrado"},
+        400: {"description": "Evento sin precio asociado"},
+    },
+)
+async def initiate_payment(body: InitiatePaymentRequest, background_tasks: BackgroundTasks):
     """
-    1. Verifica el usuario y el evento consultando sus microservicios.
-    2. Crea un registro de pago con estado PENDING en MongoDB.
-    3. Solicita a ePayco la URL de redirección PSE.
-    4. Actualiza el pago con la URL y retorna al cliente.
+    ## Flujo de pago manual con QR
+
+    1. Verifica el usuario y evento consultando microservicios
+    2. Crea un documento de pago en estado PENDING
+    3. Genera JWT token (expira en 48 horas)
+    4. Codifica token como QR PNG (base64)
+    5. Envía email con QR embebido + push FCM
     """
     async with httpx.AsyncClient(timeout=10.0) as client:
         # Verificar usuario
@@ -61,144 +61,273 @@ async def initiate_payment(body: InitiatePaymentRequest):
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Event has no associated price")
 
-    reference = str(uuid.uuid4())
+    # Generar JWT token y QR
+    qr_token = generar_token_pago(body.user_id, body.event_id)
+    qr_code_base64 = generar_qr_base64(qr_token)
 
-    # Persistir pago en estado PENDING
+    # Crear registro de pago
     payment = Payment(
         user_id=body.user_id,
         event_id=body.event_id,
-        user_email=user["email"],
-        event_name=event["name"],
+        user_email=user.get("email", ""),
+        event_name=event.get("name", ""),
         amount=amount,
-        bank_code=body.bank_code,
         status=PaymentStatus.PENDING,
+        qr_token=qr_token,
+        qr_code_base64=qr_code_base64,
     )
     await payment.insert()
 
-    # Solicitar URL PSE a ePayco
-    try:
-        epayco_data = await create_pse_transaction(
-            amount=amount,
-            user_email=user["email"],
-            event_name=event["name"],
-            bank_code=body.bank_code,
-            reference=reference,
-        )
-    except httpx.HTTPError as e:
-        await payment.delete()
-        raise HTTPException(status_code=502, detail=f"Payment gateway error: {str(e)}")
+    # Enviar notificación en background
+    background_tasks.add_task(_notify_payment_initiated, payment, user)
 
-    # Actualizar pago con datos de ePayco
-    payment.epayco_ref = epayco_data.get("data", {}).get("ref_payco")
-    payment.payment_url = epayco_data.get("data", {}).get("urlbanco")
-    payment.status = PaymentStatus.PROCESSING
-    payment.updated_at = datetime.utcnow()
-    await payment.save()
-
-    return PaymentResponse(
-        id=str(payment.id),
-        **payment.model_dump(exclude={"id"})
+    return PaymentWithQRResponse(
+        payment_id=str(payment.id),
+        amount=amount,
+        event_name=event.get("name", ""),
+        qr_code_base64=qr_code_base64,
+        qr_token=qr_token,
+        status=payment.status.value,
     )
 
 
-# ── Webhook de confirmación (callback ePayco) ───────────────────────────────
+# ── Validar QR (escaneo por app/web) ────────────────────────────────────────────────
 
-@router.post("/callback", summary="Webhook de confirmación PSE")
-async def payment_callback(payload: PSECallbackPayload, background_tasks: BackgroundTasks):
+@router.post(
+    "/validate",
+    response_model=ValidateQRResponse,
+    status_code=200,
+    summary="Validar QR y confirmar pago",
+    description="Valida el JWT token extraído del QR, marca el pago como COMPLETADO, y envía email de confirmación al usuario.",
+    responses={
+        200: {"description": "Pago confirmado exitosamente"},
+        400: {"description": "Token inválido, expirado, o pago ya confirmado"},
+        404: {"description": "Pago no encontrado"},
+    },
+)
+async def validate_qr(body: ValidateQRRequest, background_tasks: BackgroundTasks):
     """
-    Endpoint que ePayco llama con el resultado final de la transacción.
-    Se actualiza el estado del pago y, si fue exitoso, se dispara
-    una notificación de confirmación en background.
+    ## Validación de QR y confirmación de pago
+
+    Decodifica y valida el JWT token del QR:
+    1. Extrae usuario_id y evento_id del token
+    2. Busca pago en MongoDB por usuario + evento
+    3. Valida que no esté ya confirmado
+    4. Marca como COMPLETED y guarda timestamp
+    5. Envía email de confirmación + push FCM
     """
-    payment = await Payment.find_one(Payment.epayco_ref == payload.x_ref_payco)
+    try:
+        payload = validar_token_pago(body.token)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    usuario_id = payload.get("usuario_id")
+    evento_id = payload.get("evento_id")
+
+    # Buscar el pago por usuario + evento
+    payment = await Payment.find_one(
+    Payment.user_id == usuario_id,
+    Payment.event_id == evento_id
+    )   
     if not payment:
-        raise HTTPException(status_code=404, detail="Payment record not found")
-
-    status_map = {
-        "Aceptada": PaymentStatus.COMPLETED,
-        "Rechazada": PaymentStatus.FAILED,
-        "Pendiente": PaymentStatus.PROCESSING,
-    }
-    payment.status = status_map.get(payload.x_response, PaymentStatus.FAILED)
-    payment.epayco_transaction_id = payload.x_transaction_id
-    payment.updated_at = datetime.utcnow()
+        raise HTTPException(status_code=404, detail="Payment not found")
 
     if payment.status == PaymentStatus.COMPLETED:
-        payment.confirmed_at = datetime.utcnow()
-        background_tasks.add_task(_notify_payment_success, payment)
+        raise HTTPException(status_code=400, detail="Payment already confirmed")
 
+    if payment.status == PaymentStatus.FAILED:
+        raise HTTPException(status_code=400, detail="Payment was cancelled")
+
+    # Marcar como completado
+    payment.status = PaymentStatus.COMPLETED
+    payment.confirmed_at = datetime.utcnow()
+    payment.updated_at = datetime.utcnow()
     await payment.save()
-    return {"received": True}
+
+    # Notificar en background
+    background_tasks.add_task(_notify_payment_confirmed, payment)
+
+    return ValidateQRResponse(
+        message="Pago confirmado exitosamente",
+        event_id=evento_id,
+        user_id=usuario_id,
+        payment_id=str(payment.id),
+    )
 
 
-async def _notify_payment_success(payment: Payment):
-    """
-    Background task: llama al notification-service para enviar push
-    de confirmación de pago al usuario.
-    """
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        # Obtener fcm_token del usuario
+# ── Background tasks (notificaciones) ────────────────────────────────────────────────
+
+async def _notify_payment_initiated(payment: Payment, user: dict):
+    async with httpx.AsyncClient() as client:
+        await client.post(
+            f"{settings.notification_service_url}/notifications/dispatch",
+            json={
+                "usuarios": [{
+                    "id": payment.user_id,
+                    "email": user.get("email"),
+                    "fcm_token": user.get("fcm_token"),
+                }],
+                "title": "🧾 Pago pendiente",
+                "body": f"Se ha iniciado un pago de ${payment.amount:,.0f} COP para '{payment.event_name}'. Escanea el QR para confirmar.",
+                "data": {
+                    "event_id": payment.event_id,
+                    "payment_id": str(payment.id)
+                },
+            },
+            timeout=10.0,
+        )
+
+
+async def _notify_payment_confirmed(payment: Payment):
+    async with httpx.AsyncClient() as client:
         user_resp = await client.get(
-            f"{settings.user_service_url}/users/{payment.user_id}"
+            f"{settings.user_service_url}/users/{payment.user_id}",
+            timeout=10.0
         )
         if user_resp.status_code != 200:
             return
         user = user_resp.json()
-        fcm_token = user.get("fcm_token")
-        if not fcm_token:
-            return
 
         await client.post(
-            f"http://notification-service:4004/notifications/send-direct",
+            f"{settings.notification_service_url}/notifications/dispatch",
             json={
-                "token": fcm_token,
-                "title": "✅ Pago confirmado",
-                "body": f"Tu entrada para '{payment.event_name}' fue procesada exitosamente.",
-                "data": {"event_id": payment.event_id, "payment_id": str(payment.id)},
+                "usuarios": [{
+                    "id": payment.user_id,
+                    "email": user.get("email"),
+                    "fcm_token": user.get("fcm_token"),
+                }],
+                "title": "✅ Entrada confirmada",
+                "body": f"Tu pago de ${payment.amount:,.0f} COP para '{payment.event_name}' fue confirmado.",
+                "data": {
+                    "event_id": payment.event_id,
+                    "payment_id": str(payment.id)
+                },
             },
+            timeout=10.0,
         )
-
 
 # ── Consultas ───────────────────────────────────────────────────────────────
 
-@router.get("/{payment_id}", response_model=PaymentResponse,
-            summary="Obtener pago por ID")
+@router.get(
+    "/{payment_id}",
+    response_model=PaymentResponse,
+    summary="Obtener detalles de un pago por ID",
+    description="Retorna los detalles completos de un pago, incluyendo estado, usuario, evento, monto y QR base64.",
+    responses={
+        200: {"description": "Pago encontrado"},
+        404: {"description": "Pago no encontrado"},
+    },
+)
 async def get_payment(payment_id: str):
     payment = await Payment.get(payment_id)
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
-    return payment
+    return PaymentResponse(
+        id=str(payment.id),
+        user_id=payment.user_id,
+        event_id=payment.event_id,
+        user_email=payment.user_email,
+        event_name=payment.event_name,
+        amount=payment.amount,
+        status=payment.status.value,
+        qr_code_base64=payment.qr_code_base64,
+        created_at=payment.created_at,
+        updated_at=payment.updated_at,
+        confirmed_at=payment.confirmed_at,
+    )
 
 
-@router.get("/user/{user_id}", response_model=list[PaymentResponse],
-            summary="Historial de pagos de un usuario")
+@router.get(
+    "/user/{user_id}",
+    response_model=list[PaymentResponse],
+    summary="Obtener historial de pagos de un usuario",
+    description="Retorna todos los pagos de un usuario, ordenados por fecha más reciente primero.",
+    responses={
+        200: {"description": "Lista de pagos del usuario (puede estar vacía)"},
+    },
+)
 async def get_user_payments(user_id: str):
-    return await Payment.find(Payment.user_id == user_id).sort(-Payment.created_at).to_list()
+    payments = await Payment.find(Payment.user_id == user_id).sort(-Payment.created_at).to_list()
+    return [
+        PaymentResponse(
+            id=str(p.id),
+            user_id=p.user_id,
+            event_id=p.event_id,
+            user_email=p.user_email,
+            event_name=p.event_name,
+            amount=p.amount,
+            status=p.status.value,
+            qr_code_base64=p.qr_code_base64,
+            created_at=p.created_at,
+            updated_at=p.updated_at,
+            confirmed_at=p.confirmed_at,
+        )
+        for p in payments
+    ]
 
 
-@router.get("/event/{event_id}", response_model=list[PaymentResponse],
-            summary="Pagos asociados a un evento")
+@router.get(
+    "/event/{event_id}",
+    response_model=list[PaymentResponse],
+    summary="Obtener todos los pagos de un evento",
+    description="Retorna todos los pagos confirmados/pendientes para un evento. Útil para que el organizador vea asistencia.",
+    responses={
+        200: {"description": "Lista de pagos del evento (puede estar vacía)"},
+    },
+)
 async def get_event_payments(event_id: str):
-    return await Payment.find(Payment.event_id == event_id).to_list()
+    payments = await Payment.find(Payment.event_id == event_id).to_list()
+    return [
+        PaymentResponse(
+            id=str(p.id),
+            user_id=p.user_id,
+            event_id=p.event_id,
+            user_email=p.user_email,
+            event_name=p.event_name,
+            amount=p.amount,
+            status=p.status.value,
+            qr_code_base64=p.qr_code_base64,
+            created_at=p.created_at,
+            updated_at=p.updated_at,
+            confirmed_at=p.confirmed_at,
+        )
+        for p in payments
+    ]
 
 
-@router.get("/{payment_id}/status", summary="Consultar estado actualizado desde PSE")
-async def refresh_payment_status(payment_id: str):
-    """
-    Consulta el estado directamente en ePayco (útil para polling del cliente
-    mientras el usuario completa el flujo en el banco).
-    """
+@router.post(
+    "/{payment_id}/cancel",
+    response_model=PaymentResponse,
+    summary="Cancelar un pago",
+    description="Cancela un pago pendiente marcándolo como FAILED. No se pueden cancelar pagos confirmados.",
+    responses={
+        200: {"description": "Pago cancelado exitosamente"},
+        400: {"description": "No se puede cancelar un pago confirmado"},
+        404: {"description": "Pago no encontrado"},
+    },
+)
+async def cancel_payment(payment_id: str):
     payment = await Payment.get(payment_id)
-    if not payment or not payment.epayco_ref:
-        raise HTTPException(status_code=404, detail="Payment not found or not initiated")
-
-    try:
-        epayco_status = await get_transaction_status(payment.epayco_ref)
-    except httpx.HTTPError:
-        raise HTTPException(status_code=502, detail="Could not reach payment gateway")
-
-    return {
-        "payment_id": payment_id,
-        "local_status": payment.status,
-        "gateway_status": epayco_status,
-    }
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    
+    if payment.status == PaymentStatus.COMPLETED:
+        raise HTTPException(status_code=400, detail="Cannot cancel confirmed payment")
+    
+    payment.status = PaymentStatus.FAILED
+    payment.updated_at = datetime.utcnow()
+    await payment.save()
+    
+    return PaymentResponse(
+        id=str(payment.id),
+        user_id=payment.user_id,
+        event_id=payment.event_id,
+        user_email=payment.user_email,
+        event_name=payment.event_name,
+        amount=payment.amount,
+        status=payment.status.value,
+        qr_code_base64=payment.qr_code_base64,
+        created_at=payment.created_at,
+        updated_at=payment.updated_at,
+        confirmed_at=payment.confirmed_at,
+    )

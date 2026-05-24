@@ -9,14 +9,12 @@ class Settings(BaseSettings):
     # URLs internas de servicios (para enriquecer datos del pago)
     user_service_url: str  = "http://user-service:4001"
     event_service_url: str = "http://event-service:4003"
+    notification_service_url: str = "http://notification-service:4004"
 
-    # ePayco / PSE
-    epayco_p_cust_id: str = ""       # Customer ID de ePayco
-    epayco_p_key: str = ""           # Private Key de ePayco
-    epayco_public_key: str = ""      # Public Key de ePayco
-    epayco_test: bool = True         # True = sandbox, False = producción
-    payment_callback_url: str = "http://localhost:3000/payments/callback"
-    payment_response_url: str = "http://localhost:3000/payments/response"
+    # JWT para tokens de confirmación de pago
+    jwt_secret_key: str = "your-secret-key-change-in-env"
+    jwt_algorithm: str = "HS256"
+    jwt_expiration_hours: int = 48
 
     class Config:
         env_file = ".env"

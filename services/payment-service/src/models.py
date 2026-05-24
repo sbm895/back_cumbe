@@ -6,11 +6,9 @@ from enum import Enum
 
 
 class PaymentStatus(str, Enum):
-    PENDING    = "pending"     # Iniciado, esperando redirección PSE
-    PROCESSING = "processing"  # Redirigido a PSE, esperando confirmación
-    COMPLETED  = "completed"   # Confirmado exitosamente por PSE
-    FAILED     = "failed"      # Rechazado por PSE o banco
-    REFUNDED   = "refunded"    # Reembolso ejecutado
+    PENDING    = "pending"     # Iniciado, esperando confirmación manual
+    COMPLETED  = "completed"   # Confirmado por escaneo de QR
+    FAILED     = "failed"      # Cancelado o rechazado
 
 
 class Payment(Document):
@@ -27,11 +25,9 @@ class Payment(Document):
     currency: str = "COP"
     status: PaymentStatus = PaymentStatus.PENDING
 
-    # Integración PSE / ePayco
-    epayco_ref: Optional[str] = None        # Referencia interna de ePayco
-    epayco_transaction_id: Optional[str] = None  # ID de transacción de PSE
-    payment_url: Optional[str] = None       # URL de redirección a PSE
-    bank_code: Optional[str] = None         # Código del banco seleccionado por el usuario
+    # JWT y QR Code para confirmación manual
+    qr_token: str               # JWT token con usuario_id, evento_id, exp
+    qr_code_base64: str         # PNG codificado en base64 para mostrar en UI/email
 
     # Auditoría
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -41,9 +37,9 @@ class Payment(Document):
     class Settings:
         name = "payments"
         indexes = [
-            [("user_id", 1)],           # Consultar pagos por usuario
-            [("event_id", 1)],          # Consultar pagos por evento
-            [("status", 1)],            # Filtrar por estado
-            [("epayco_ref", 1)],        # Búsqueda por referencia PSE (webhook)
-            [("created_at", -1)],       # Ordenar por fecha descendente
+            [("user_id", 1)],
+            [("event_id", 1)],
+            [("status", 1)],
+            [("qr_token", 1)],          # Para validación rápida del QR
+            [("created_at", -1)],
         ]
