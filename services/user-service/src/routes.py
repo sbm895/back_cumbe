@@ -47,7 +47,9 @@ class BatchUserRequest(BaseModel):
 
 @router.post("/batch", response_model=list[User])
 async def get_users_batch(request: BatchUserRequest):
-    users = await User.find({"_id": {"$in": request.ids}}).to_list()
+    from beanie import PydanticObjectId
+    object_ids = [PydanticObjectId(uid) for uid in request.ids if PydanticObjectId.is_valid(uid)]
+    users = await User.find({"_id": {"$in": object_ids}}).to_list()
     return users
 
 
