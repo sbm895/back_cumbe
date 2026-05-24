@@ -250,7 +250,7 @@ async def get_event_reviews(event_id: str):
     response_model=EventImageUploadResponse,
     status_code=200,
     summary="Upload Event Image",
-    tags=["Events", "Images"],
+    tags=["Images"],
     responses={
         404: {
             "description": "Event not found",
@@ -299,7 +299,7 @@ async def upload_event_image(event_id: str, file: UploadFile = File(...)):
     "/{event_id}/images",
     status_code=200,
     summary="Delete Event Image",
-    tags=["Events", "Images"],
+    tags=["Images"],
     description="Elimina una imagen específica de la lista de imágenes del evento en la base de datos.",
     responses={
         200: {"description": "Imagen eliminada exitosamente"},

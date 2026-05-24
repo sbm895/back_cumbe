@@ -248,7 +248,7 @@ async def delete_user(user_id: str):
     response_model=UserImageUploadResponse,
     status_code=200,
     summary="Upload User Profile Picture",
-    tags=["Users", "Images"],
+    tags=["Images"],
     responses={
         404: {
             "description": "User not found",
@@ -296,6 +296,7 @@ async def upload_profile_picture(user_id: str, file: UploadFile = File(...)):
 @router.delete(
     "/{user_id}/profile-picture",
     status_code=200,
+    tags=["Images"],
     summary="Eliminar foto de perfil",
     description="Elimina la URL de la foto de perfil del usuario en la base de datos.",
     responses={
@@ -319,6 +320,7 @@ async def delete_profile_picture(user_id: str):
 @router.put(
     "/{user_id}/profile-picture",
     status_code=200,
+    tags=["Images"],
     response_model=UserImageUploadResponse,
     summary="Actualizar foto de perfil",
     description="Reemplaza la foto de perfil actual del usuario subiendo una nueva imagen a Cloudinary.",
