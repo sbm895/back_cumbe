@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
+from datetime import datetime, timezone, timedelta
 from .models import User, Event, UserReview
 from .categories import CategoriaBQ
 import cloudinary.uploader
@@ -38,6 +39,17 @@ async def get_popular_events():
         return events
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching popular events: {str(e)}")
+    
+@router.get("/incoming")
+async def get_incoming_events():
+    now = datetime.now(timezone.utc)
+    next_24h = now + timedelta(hours=24)
+    
+    events = await Event.find({
+        "date": {"$gte": now, "$lte": next_24h}
+    }).to_list()
+    return events
+
 
 
 @router.get("/category/{category_name}")
@@ -178,6 +190,9 @@ async def get_event_attendees(event_id: str):
     return event.attendees
 
 
+
+
+
 @router.post("/{event_id}/reviews", status_code=201)
 async def add_review_to_event(event_id: str, review: UserReview):
     """Recibe una reseña de un usuario y la guarda en el modelo del evento."""
@@ -188,6 +203,35 @@ async def add_review_to_event(event_id: str, review: UserReview):
     event.reviews.append(review)
     await event.save()
     return review
+
+@router.patch("/{event_id}/reviews/{user_id}", status_code=200, response_model=UserReview)
+async def update_review(event_id: str, user_id: str, review: UserReview):
+    event = await Event.get(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    for i, r in enumerate(event.reviews):
+        if r.user_id == user_id:
+            event.reviews[i] = review
+            await event.save()
+            return review
+
+    raise HTTPException(status_code=404, detail="Review not found")
+
+
+@router.delete("/{event_id}/reviews/{user_id}", status_code=204)
+async def delete_review(event_id: str, user_id: str):
+    event = await Event.get(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    original_len = len(event.reviews)
+    event.reviews = [r for r in event.reviews if r.user_id != user_id]
+
+    if len(event.reviews) == original_len:
+        raise HTTPException(status_code=404, detail="Review not found")
+
+    await event.save()
 
 @router.get("/{event_id}/reviews")
 async def get_event_reviews(event_id: str):

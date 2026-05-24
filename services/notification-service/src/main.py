@@ -1,39 +1,37 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from beanie import init_beanie
-from motor.motor_asyncio import AsyncIOMotorClient
 
 from .scheduler import scheduler
-from .clients import get_eventos_proximos
-from .firebase import send_push
-from .config import settings
-from .models import User, Event
 from .routes import router
+from .email_sender import email_client
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    client = AsyncIOMotorClient(settings.mongo_url)
-    await init_beanie(
-        database=client[settings.mongo_db],
-        document_models=[User, Event],
-    )
+    # Conectar cliente de email antes de iniciar scheduler
+    await email_client.connect()
     scheduler.start()
     yield
     scheduler.shutdown()
-    client.close()
+    await email_client.close()
 
 
 app = FastAPI(
     title="Notification Service",
+    description="Servicio encargado de enviar notificaciones push y correos electrónicos a los usuarios."
+                "Incluye endpoints para envío directo y orquestado en paralelo.",
+    version="1.0.0",
+    contact={"name": "Cumbe Team", "email": "devops@cumbe.com"},
+    license_info={"name": "MIT"},
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
     lifespan=lifespan,
 )
-app.include_router(router, prefix="/notifs")
+app.include_router(router, prefix="/notifications")
 
 
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "notification-service"}
+

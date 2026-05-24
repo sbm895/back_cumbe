@@ -233,7 +233,6 @@ async def delete_review(user_id: str, event_id: str):
         )
 
 
-
 @router.delete("/{user_id}")
 async def delete_user(user_id: str):
     user = await User.get(user_id)

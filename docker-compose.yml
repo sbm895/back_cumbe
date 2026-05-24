@@ -6,8 +6,15 @@ services:
     depends_on:
       - user-service
       - event-service
+      - notification-service
+      - recommendation-service
+      - payment-service
     environment:
       - USER_SERVICE_URL=http://user-service:4001
+      - EVENT_SERVICE_URL=http://event-service:4003
+      - NOTIFICATION_SERVICE_URL=http://notification-service:4004
+      - RECOMMENDATION_SERVICE_URL=http://recommendation-service:4005
+      - PAYMENT_SERVICE_URL=http://payment-service:4006
     env_file:
       - .env
     volumes:
@@ -42,9 +49,9 @@ services:
       - user-service
       - event-service
     environment:
-      - FIREBASE_CREDENTIALS_PATH=/app/firebase-credentials.json
       - EVENTOS_URL=http://event-service:4003
       - USUARIOS_URL=http://user-service:4001
+      - RESEND_API_KEY=${RESEND_API_KEY}
     env_file:
       - .env
     volumes:
@@ -61,3 +68,23 @@ services:
      - ./services/recommendation-service:/app
     command: uvicorn src.main:app --host 0.0.0.0 --port 4005 --reload
 
+  payment-service:
+   build: ./services/payment-service
+   ports:
+     - "4006:4006"
+   depends_on:
+     - user-service
+     - event-service
+     - notification-service
+   environment:
+     - USER_SERVICE_URL=http://user-service:4001
+     - EVENT_SERVICE_URL=http://event-service:4003
+     - NOTIFICATION_SERVICE_URL=http://notification-service:4004
+     - JWT_SECRET_KEY=${JWT_SECRET}
+     - JWT_ALGORITHM=HS256
+     - JWT_EXPIRATION_HOURS=48
+   env_file:
+     - .env
+   volumes:
+     - ./services/payment-service:/app
+   command: uvicorn src.main:app --host 0.0.0.0 --port 4006 --reload
