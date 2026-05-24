@@ -1,7 +1,9 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Depends, Header
 from pydantic import BaseModel, EmailStr, conint
-from .models import User
+from .models import User, EventReview
 from .auth import hash_password, verify_password, create_access_token, verify_token
+from .config import settings
+import httpx
 import cloudinary.uploader
 
 router = APIRouter()
@@ -41,6 +43,16 @@ class CreateReviewRequest(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+class BatchUserRequest(BaseModel):
+    ids: list[str]
+
+@router.post("/batch", response_model=list[User])
+async def get_users_batch(request: BatchUserRequest):
+    from beanie import PydanticObjectId
+    object_ids = [PydanticObjectId(uid) for uid in request.ids if PydanticObjectId.is_valid(uid)]
+    users = await User.find({"_id": {"$in": object_ids}}).to_list()
+    return users
 
 
 @router.post("/signup", response_model=TokenResponse, status_code=201)
@@ -156,17 +168,70 @@ async def get_fcm_token(user_id: str):
         raise HTTPException(status_code=404, detail="User not found")
     return {"fcm_token": user.fcm_token}
 
-
-@router.post("/{user_id}/reviews", status_code=201, response_model=CreateReviewRequest)
-async def add_review(user_id: str, review: CreateReviewRequest):
+@router.post("/{user_id}/reviews", status_code=201, response_model=EventReview)
+async def add_review(user_id: str, review: EventReview):
     user = await User.get(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    async with httpx.AsyncClient() as client:
+        event_resp = await client.post(
+            f"{settings.eventos_url}/events/{review.event_id}/reviews",
+            json={"user_id": user_id, "review_text": review.review_text, "star": review.star},
+            timeout=10.0,
+        )
+        if event_resp.status_code not in (200, 201):
+            raise HTTPException(status_code=404, detail="Event not found")
+
     user.reviews.append(review)
     await user.save()
+    return review
+
+
+@router.patch("/{user_id}/reviews/{event_id}", status_code=200, response_model=EventReview)
+async def update_review(user_id: str, event_id: str, review: EventReview):
+    user = await User.get(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    for i, r in enumerate(user.reviews):
+        if r.event_id == event_id:
+            user.reviews[i] = review
+            await user.save()
+            break
+    else:
+        raise HTTPException(status_code=404, detail="Review not found")
+
+    async with httpx.AsyncClient() as client:
+        await client.patch(
+            f"{settings.eventos_url}/events/{review.event_id}/reviews",
+            json={"user_id": user_id, "review_text": review.review_text, "star": review.star},
+            timeout=10.0,
+        )
 
     return review
+
+
+@router.delete("/{user_id}/reviews/{event_id}", status_code=204)
+async def delete_review(user_id: str, event_id: str):
+    user = await User.get(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    original_len = len(user.reviews)
+    user.reviews = [r for r in user.reviews if r.event_id != event_id]
+
+    if len(user.reviews) == original_len:
+        raise HTTPException(status_code=404, detail="Review not found")
+
+    await user.save()
+
+    async with httpx.AsyncClient() as client:
+        await client.delete(
+            f"{settings.eventos_url}/events/{event_id}/reviews/{user_id}",
+            timeout=10.0,
+        )
+
 
 
 @router.delete("/{user_id}")
@@ -229,6 +294,60 @@ async def upload_profile_picture(user_id: str, file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error uploading image: {str(e)}")
 
+@router.delete(
+    "/{user_id}/profile-picture",
+    status_code=200,
+    summary="Eliminar foto de perfil",
+    description="Elimina la URL de la foto de perfil del usuario en la base de datos.",
+    responses={
+        200: {"description": "Foto de perfil eliminada exitosamente"},
+        404: {"description": "Usuario no encontrado o sin foto de perfil"},
+    },
+)
+async def delete_profile_picture(user_id: str):
+    user = await User.get(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not user.profile_picture_url:
+        raise HTTPException(status_code=404, detail="User has no profile picture")
+
+    user.profile_picture_url = None
+    await user.save()
+    return {"message": "Profile picture deleted"}
+
+
+@router.put(
+    "/{user_id}/profile-picture",
+    status_code=200,
+    response_model=UserImageUploadResponse,
+    summary="Actualizar foto de perfil",
+    description="Reemplaza la foto de perfil actual del usuario subiendo una nueva imagen a Cloudinary.",
+    responses={
+        200: {"description": "Foto de perfil actualizada exitosamente"},
+        404: {"description": "Usuario no encontrado"},
+        500: {"description": "Error al subir la imagen a Cloudinary"},
+    },
+)
+async def update_profile_picture(user_id: str, file: UploadFile = File(...)):
+    """
+    ## Actualizar foto de perfil
+
+    1. Elimina la URL de la foto actual en la base de datos
+    2. Sube la nueva imagen a Cloudinary
+    3. Guarda la nueva URL en la base de datos
+
+    - **user_id**: ID del usuario
+    - **file**: Nueva imagen de perfil (multipart/form-data)
+    """
+    user = await User.get(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.profile_picture_url = None
+    await user.save()
+
+    return await upload_profile_picture(user_id, file)
 
 @router.post(
     "/{user_id}/favorites/{event_id}",
