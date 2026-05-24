@@ -295,3 +295,33 @@ async def upload_event_image(event_id: str, file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error uploading image: {str(e)}")
     
+@router.delete(
+    "/{event_id}/images",
+    status_code=200,
+    summary="Delete Event Image",
+    tags=["Events", "Images"],
+    description="Elimina una imagen específica de la lista de imágenes del evento en la base de datos.",
+    responses={
+        200: {"description": "Imagen eliminada exitosamente"},
+        404: {"description": "Evento no encontrado o imagen no encontrada en la lista"},
+    },
+)
+async def delete_event_image(event_id: str, image_url: str):
+    """
+    ## Eliminar imagen de evento
+
+    - **event_id**: ID del evento
+    - **image_url**: URL exacta de la imagen a eliminar
+    """
+    event = await Event.get(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    if image_url not in event.pictures:
+        raise HTTPException(status_code=404, detail="Image not found in event")
+
+    event.pictures.remove(image_url)
+    await event.save()
+
+    return {"message": "Image deleted", "event_id": event_id, "url": image_url}
+    
