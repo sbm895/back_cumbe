@@ -204,6 +204,35 @@ async def add_review_to_event(event_id: str, review: UserReview):
     await event.save()
     return review
 
+@router.patch("/{event_id}/reviews/{user_id}", status_code=200, response_model=UserReview)
+async def update_review(event_id: str, user_id: str, review: UserReview):
+    event = await Event.get(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    for i, r in enumerate(event.reviews):
+        if r.user_id == user_id:
+            event.reviews[i] = review
+            await event.save()
+            return review
+
+    raise HTTPException(status_code=404, detail="Review not found")
+
+
+@router.delete("/{event_id}/reviews/{user_id}", status_code=204)
+async def delete_review(event_id: str, user_id: str):
+    event = await Event.get(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    original_len = len(event.reviews)
+    event.reviews = [r for r in event.reviews if r.user_id != user_id]
+
+    if len(event.reviews) == original_len:
+        raise HTTPException(status_code=404, detail="Review not found")
+
+    await event.save()
+
 @router.get("/{event_id}/reviews")
 async def get_event_reviews(event_id: str):
     """Retorna la lista de todas las reseñas que los usuarios han dejado para este evento."""
