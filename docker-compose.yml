@@ -47,7 +47,6 @@ services:
       - user-service
       - event-service
     environment:
-      - FIREBASE_CREDENTIALS_PATH=/app/firebase-credentials.json
       - EVENTOS_URL=http://event-service:4003
       - USUARIOS_URL=http://user-service:4001
       - SMTP_HOST=${SMTP_HOST}
