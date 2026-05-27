@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from datetime import datetime, timezone, timedelta
+from .auth import require_publisher
 from .models import User, Event, UserReview
 from .categories import CategoriaBQ
 import cloudinary.uploader
@@ -78,7 +79,11 @@ async def get_event(event_id: str):
 
 
 @router.put("/{event_id}")
-async def update_event(event_id: str, event_data: Event):
+async def update_event(
+    event_id: str,
+    event_data: Event,
+    _publisher: dict[str, str] = Depends(require_publisher),
+):
     event = await Event.get(event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
@@ -94,7 +99,10 @@ async def update_event(event_id: str, event_data: Event):
     return event
 
 @router.delete("/{event_id}")
-async def delete_event(event_id: str):
+async def delete_event(
+    event_id: str,
+    _publisher: dict[str, str] = Depends(require_publisher),
+):
     event = await Event.get(event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
@@ -103,7 +111,10 @@ async def delete_event(event_id: str):
     return {"message": "Event deleted successfully"}
 
 @router.post("/", status_code=201)
-async def create_event(event: Event):
+async def create_event(
+    event: Event,
+    _publisher: dict[str, str] = Depends(require_publisher),
+):
     # `event.organizer` ahora guarda solo el id (str)
     if event.organizer and event.organizer not in event.attendees:
         event.attendees.append(event.organizer)
@@ -125,7 +136,11 @@ async def create_event(event: Event):
     return inserted_event
 
 @router.post("/{user_id}/events")
-async def create_event_for_user(user_id: str, event: Event):
+async def create_event_for_user(
+    user_id: str,
+    event: Event,
+    _publisher: dict[str, str] = Depends(require_publisher),
+):
     user = await User.get(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -270,7 +285,11 @@ async def get_event_reviews(event_id: str):
         },
     },
 )
-async def upload_event_image(event_id: str, file: UploadFile = File(...)):
+async def upload_event_image(
+    event_id: str,
+    file: UploadFile = File(...),
+    _publisher: dict[str, str] = Depends(require_publisher),
+):
     """
     Upload an image for an event to Cloudinary.
     
@@ -306,7 +325,11 @@ async def upload_event_image(event_id: str, file: UploadFile = File(...)):
         404: {"description": "Evento no encontrado o imagen no encontrada en la lista"},
     },
 )
-async def delete_event_image(event_id: str, image_url: str):
+async def delete_event_image(
+    event_id: str,
+    image_url: str,
+    _publisher: dict[str, str] = Depends(require_publisher),
+):
     """
     ## Eliminar imagen de evento
 
