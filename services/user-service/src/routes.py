@@ -124,6 +124,23 @@ async def list_users():
     return await User.find_all().to_list()
 
 
+@router.get("/search")
+async def search_users(query: str | None = None, name: str | None = None):
+    """Search users by name. Use `query` or `name` query parameter (case-insensitive).
+
+    Examples:
+    - GET /users/search?query=ana
+    - GET /users/search?name=juan
+    """
+    q = (query or name or "").strip()
+    if not q:
+        raise HTTPException(status_code=400, detail="Query parameter 'query' or 'name' is required")
+
+    # Case-insensitive partial match using MongoDB regex
+    users = await User.find({"name": {"$regex": q, "$options": "i"}}).to_list()
+    return users
+
+
 @router.get("/{user_id}")
 async def get_user(user_id: str):
     user = await User.get(user_id)
