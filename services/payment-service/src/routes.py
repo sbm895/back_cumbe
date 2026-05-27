@@ -1,7 +1,8 @@
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 import httpx
 
+from .auth import require_publisher
 from .models import Payment, PaymentStatus
 from .schemas import (
     InitiatePaymentRequest,
@@ -275,7 +276,10 @@ async def get_user_payments(user_id: str):
         200: {"description": "Lista de pagos del evento (puede estar vacía)"},
     },
 )
-async def get_event_payments(event_id: str):
+async def get_event_payments(
+    event_id: str,
+    _publisher: dict[str, str] = Depends(require_publisher),
+):
     payments = await Payment.find(Payment.event_id == event_id).to_list()
     return [
         PaymentResponse(
