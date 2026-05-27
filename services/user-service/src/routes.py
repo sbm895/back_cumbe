@@ -66,11 +66,12 @@ async def signup(request: SignupRequest):
     user = User(
         name=request.name,
         email=request.email,
+        role="user",
         hashed_password=hashed_pwd,
     )
     await user.insert()
     
-    token = create_access_token(str(user.id))
+    token = create_access_token(str(user.id), user.role)
     return TokenResponse(access_token=token)
 
 
@@ -84,7 +85,7 @@ async def login(request: LoginRequest):
     if not verify_password(request.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     
-    token = create_access_token(str(user.id))
+    token = create_access_token(str(user.id), user.role)
     return TokenResponse(access_token=token)
 
 
@@ -98,12 +99,12 @@ def get_bearer_token(authorization: str | None = Header(None)) -> str | None:
 
 @router.get("/verify-token/{token}")
 async def verify_token_endpoint(token: str):
-    """Verify a JWT token and return the user ID if valid."""
-    user_id = verify_token(token)
-    if user_id is None:
+    """Verify a JWT token and return the user ID and role if valid."""
+    token_payload = verify_token(token)
+    if token_payload is None:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     
-    return {"user_id": user_id}
+    return token_payload
 
 
 @router.post("/logout")
@@ -112,8 +113,8 @@ async def logout(authorization: str = Depends(get_bearer_token)):
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization header missing or invalid")
 
-    user_id = verify_token(authorization)
-    if user_id is None:
+    token_payload = verify_token(authorization)
+    if token_payload is None:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
     return {"message": "Logged out successfully"}
@@ -134,6 +135,7 @@ async def get_user(user_id: str):
 
 @router.post("/", status_code=201)
 async def create_user(user: User):
+    user.role = "user"
     return await user.insert()
 
 @router.put("/{user_id}")

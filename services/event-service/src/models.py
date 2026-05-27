@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Literal, Optional
 from beanie import Document
 from pydantic import BaseModel, EmailStr, field_validator, conint
 from .categories import CategoriaBQ
@@ -18,6 +18,7 @@ class UserReview(BaseModel):
 class User(Document):
     name: str
     email: EmailStr
+    role: Literal["user", "publisher"] = "user"
     fcm_token: Optional[str] = None  # se actualiza cada login
     profile_picture_url: Optional[str] = None      # URL o path de la foto
     favorites: list[str] = []                   # IDs de eventos favoritos

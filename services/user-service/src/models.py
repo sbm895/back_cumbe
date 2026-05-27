@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Literal, Optional
 from beanie import Document
 from pydantic import BaseModel, EmailStr, conint
 
@@ -12,6 +12,7 @@ class EventReview(BaseModel):
 class User(Document):
     name: str
     email: EmailStr
+    role: Literal["user", "publisher"] = "user"
     hashed_password: Optional[str] = None
     fcm_token: Optional[str] = None  # se actualiza cada login
     profile_picture_url: Optional[str] = None                # Cloudinary image URL

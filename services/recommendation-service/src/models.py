@@ -1,6 +1,6 @@
 from beanie import Document
 from pydantic import EmailStr, field_validator
-from typing import Optional
+from typing import Literal, Optional
 from .categories import CategoriaBQ
 from datetime import datetime
 
@@ -8,6 +8,7 @@ from datetime import datetime
 class User(Document):
     name: str
     email: EmailStr
+    role: Literal["user", "publisher"] = "user"
     fcm_token: Optional[str] = None
     profile_picture_url: Optional[str] = None
     favorites: list[str] = []
